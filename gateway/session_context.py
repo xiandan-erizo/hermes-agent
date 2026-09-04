@@ -103,14 +103,6 @@ _SESSION_MESSAGE_ID: ContextVar = ContextVar("HERMES_SESSION_MESSAGE_ID", defaul
 
 _SESSION_PROFILE: ContextVar = ContextVar("HERMES_SESSION_PROFILE", default=_UNSET)
 
-# Authenticated customer identity supplied by a trusted host. This remains
-# in-process only: it is intentionally excluded from _VAR_MAP and subprocess
-# environment propagation.
-_AUTHENTICATED_USER_CONTEXT: ContextVar[dict[str, str] | None] = ContextVar(
-    "HERMES_AUTHENTICATED_USER_CONTEXT",
-    default=None,
-)
-
 # Per-session cron marker. Unlike the process-global legacy env var, this is
 # scoped to one cron job / inbound session. _UNSET preserves the legacy env
 # fallback for CLI/tests; "1" marks cron; "" explicitly marks non-cron and
@@ -240,7 +232,6 @@ def set_session_vars(
     async_delivery: bool = True,
     ui_session_id: str = "",
     cron_session: Any = _UNSET,
-    authenticated_user_context: dict[str, str] | None = None,
 ) -> list:
     """Set all session context variables and return reset tokens.
 
@@ -284,9 +275,6 @@ def set_session_vars(
         _SESSION_PROFILE.set(profile),
         _CRON_SESSION.set(cron_session),
         _SESSION_ASYNC_DELIVERY.set(bool(async_delivery)),
-        _AUTHENTICATED_USER_CONTEXT.set(
-            dict(authenticated_user_context) if authenticated_user_context is not None else None
-        ),
     ]
     try:
         from agent.runtime_cwd import set_session_cwd
@@ -332,7 +320,6 @@ def clear_session_vars(tokens: list) -> None:
     # behavior (CLI / unaware paths), not be mistaken for an opted-out
     # stateless adapter.
     _SESSION_ASYNC_DELIVERY.set(_UNSET)
-    _AUTHENTICATED_USER_CONTEXT.set(None)
     try:
         from agent.runtime_cwd import clear_session_cwd
 
@@ -381,7 +368,6 @@ def reset_session_vars() -> None:
     # same inheritance-leak reason as the mapped vars above — see clear_session_vars,
     # which resets this var on the handler-exit path for the symmetric concern.
     _SESSION_ASYNC_DELIVERY.set(_UNSET)
-    _AUTHENTICATED_USER_CONTEXT.set(None)
     try:
         from agent.runtime_cwd import clear_session_cwd
 
@@ -414,12 +400,6 @@ def get_session_env(name: str, default: str = "") -> str:
             return value
     # Fall back to os.environ for CLI, cron, and test compatibility
     return os.getenv(name, default)
-
-
-def get_current_user_context() -> dict[str, str] | None:
-    """Return a defensive copy of the authenticated customer identity."""
-    value = _AUTHENTICATED_USER_CONTEXT.get()
-    return dict(value) if value is not None else None
 
 
 # Surfaces that are not a human chat channel. The gateway binds a platform
