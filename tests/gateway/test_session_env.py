@@ -1,8 +1,10 @@
 import asyncio
 import os
+from contextvars import copy_context
 
 import pytest
 
+from gateway import session_context
 from gateway.config import Platform
 from gateway.run import GatewayRunner
 from gateway.session import SessionContext, SessionSource
@@ -14,6 +16,13 @@ from gateway.session_context import (
     _VAR_MAP,
     _UNSET,
 )
+
+
+AUTHENTICATED_USER_CONTEXT = {
+    "email": "bob@example.com",
+    "username": "bob",
+    "display_name": "Bob Example",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -132,6 +141,38 @@ def test_get_session_env_falls_back_to_os_environ(monkeypatch):
     # must not leak through after a gateway session is cleaned up.
     clear_session_vars(tokens)
     assert get_session_env("HERMES_SESSION_PLATFORM") == ""
+
+
+def test_authenticated_user_context_returns_a_defensive_copy_and_clears():
+    tokens = set_session_vars(authenticated_user_context=AUTHENTICATED_USER_CONTEXT)
+
+    returned = session_context.get_current_user_context()
+    assert returned == AUTHENTICATED_USER_CONTEXT
+    assert returned is not AUTHENTICATED_USER_CONTEXT
+
+    returned["email"] = "changed@example.com"
+    assert session_context.get_current_user_context() == AUTHENTICATED_USER_CONTEXT
+
+    clear_session_vars(tokens)
+    assert session_context.get_current_user_context() is None
+
+
+def test_authenticated_user_context_does_not_leak_between_copied_contexts():
+    first = copy_context()
+    second = copy_context()
+    alice = {
+        "email": "alice@example.com",
+        "username": "alice",
+        "display_name": "Alice Example",
+    }
+
+    first.run(set_session_vars, authenticated_user_context=AUTHENTICATED_USER_CONTEXT)
+    assert first.run(session_context.get_current_user_context) == AUTHENTICATED_USER_CONTEXT
+    assert second.run(session_context.get_current_user_context) is None
+
+    second.run(set_session_vars, authenticated_user_context=alice)
+    assert first.run(session_context.get_current_user_context) == AUTHENTICATED_USER_CONTEXT
+    assert second.run(session_context.get_current_user_context) == alice
 
 
 # ---------------------------------------------------------------------------
@@ -272,4 +313,3 @@ def test_cron_session_set_clear_and_reset_tristate(monkeypatch):
 
     reset_session_vars()
     assert get_session_env("HERMES_CRON_SESSION") == "1"
-
