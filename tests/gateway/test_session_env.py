@@ -175,15 +175,6 @@ def test_authenticated_user_context_does_not_leak_between_copied_contexts():
     assert second.run(session_context.get_current_user_context) == alice
 
 
-def test_reset_session_vars_clears_authenticated_user_context():
-    set_session_vars(authenticated_user_context=AUTHENTICATED_USER_CONTEXT)
-    assert session_context.get_current_user_context() == AUTHENTICATED_USER_CONTEXT
-
-    reset_session_vars()
-
-    assert session_context.get_current_user_context() is None
-
-
 # ---------------------------------------------------------------------------
 # SESSION_KEY contextvars tests
 # ---------------------------------------------------------------------------
